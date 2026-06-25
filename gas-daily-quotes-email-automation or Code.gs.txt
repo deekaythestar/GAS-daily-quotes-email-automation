@@ -1,0 +1,188 @@
+// Built with AI assistance - Personal automation project
+// Google Apps Script: Daily Quotes Email Automation
+
+function QUOTES_EMAIL() {
+  var fileId = 'YOUR_SHEET_ID_HERE'; // Replace with your Google Sheets ID
+  var spreadsheet = SpreadsheetApp.openById(fileId);
+
+  // Automatically select the sheet based on the current day
+  var daysOfWeek = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
+  var today = new Date();
+  var dayIndex = today.getDay();
+  var sheetName = daysOfWeek[dayIndex];
+  var sheet = spreadsheet.getSheetByName(sheetName);
+
+  if (!sheet) {
+    Logger.log('Sheet not found: ' + sheetName);
+    return;
+  }
+
+  var quotesRange = sheet.getRange('A1:B');
+  var quotesValues = quotesRange.getValues();
+
+  // Filter available quotes + keep original row index - BUG FIX
+  var availableQuotes = [];
+  quotesValues.forEach((row, index) => {
+    if (row[0]!== "") {
+      availableQuotes.push({quote: row[0], rowIndex: index});
+    }
+  });
+
+  if (availableQuotes.length === 0) {
+    Logger.log('No quotes found in sheet: ' + sheetName);
+    return;
+  }
+
+  var randomIndex = Math.floor(Math.random() * availableQuotes.length);
+  var selectedQuote = availableQuotes[randomIndex].quote;
+  var originalRowIndex = availableQuotes[randomIndex].rowIndex + 1; // +1 for Sheets
+
+  // Split the quote into sentences by full stop
+  var quoteLines = selectedQuote.split('.');
+  quoteLines = quoteLines.filter(line => line.trim()!== '');
+
+  // Generate random colors for each sentence
+  var randomColors = generateRandomColors(quoteLines.length);
+
+  // Fetch images from Google Drive folder
+  var folderId = 'YOUR_DRIVE_FOLDER_ID_HERE'; // Replace with your Drive folder ID
+  var folder = DriveApp.getFolderById(folderId);
+  var files = folder.getFiles();
+  var images = [];
+
+  while (files.hasNext()) {
+    var file = files.next();
+    var mimeType = file.getMimeType();
+    if (mimeType === MimeType.JPEG || mimeType === MimeType.PNG) {
+      images.push(file);
+    }
+  }
+
+  if (images.length === 0) {
+    Logger.log('No image files found in the folder. Email will not be sent.');
+    return;
+  }
+
+  var randomImageIndex = Math.floor(Math.random() * images.length);
+  var selectedImage = images[randomImageIndex];
+  var imageBlob = selectedImage.getBlob();
+
+  var emailBody = `
+    <html>
+      <head>
+        <style>
+         .blinking {
+            animation: blink-animation 1s steps(5, start) infinite;
+            -webkit-animation: blink-animation 1s steps(5, start) infinite;
+          }
+          @keyframes blink-animation {
+            to { visibility: hidden; }
+          }
+          @-webkit-keyframes blink-animation {
+            to { visibility: hidden; }
+          }
+        </style>
+      </head>
+      <body style="font-family: Arial, sans-serif; font-size: 18px; line-height: 1.6; text-align: justify;">
+        <div style="text-align: center; margin-bottom: 27px;">
+          <h1 style="color: #008080; text-transform: uppercase;">Good Morning! Happy ${sheetName}!</h1>
+          <h3 style="color: #FF5733; text-transform: uppercase;">Daily Motivation Awaits You!</h3>
+        </div>
+        <div style="font-size: 18px; margin-top: 27px;">
+          ${quoteLines.map((line, index) => {
+            return `<p style="color: ${randomColors[index]};">${line.trim()}.</p>`;
+          }).join('')}
+        </div>
+        <p style="text-align: center; color: #888; font-size: 18px; margin-top: 24px;">
+          You are unstoppable. Make this day count!
+        </p>
+        <p>_______________________________________________________________</p>
+        <h3 style="color: #D8BFAA; text-transform: capitalize;">Automation by: <a href="https://www.youtube.com/@example">example</a></h3>
+        <h3 style="color: #FF5733; text-transform: capitalize; background-color: yellow; font-size: 24px; font-family: 'Courier New', Courier, monospace; border: 2px solid #FF5733; padding: 5px;">
+          <strong><em>Website:</em></strong>
+          <a href="http://bit.ly/example"><strong>example</strong></a>
+         </h3>
+        <h3 style="color: #FF33A1; text-transform: capitalize;">Note: Have a Great Day!</h3>
+        <h3 style="color: #33FF57; text-transform: uppercase;">Live Life Joyfully!</h3>
+      </body>
+    </html>
+  `;
+
+  // Send the email with image attachment
+  MailApp.sendEmail({
+    to: "your-email@example.com", // Replace with recipient email
+    subject: `Good morning! Happy ${sheetName}`,
+    htmlBody: emailBody,
+    attachments: [imageBlob]
+  });
+
+  Logger.log(`Quote sent: ${selectedQuote}`);
+
+  // Fill the corresponding date in column B - FIXED
+  var formattedDate = Utilities.formatDate(today, Session.getScriptTimeZone(), "MMMM dd, yyyy (EEEE) hh:mm:ss a");
+  sheet.getRange(originalRowIndex, 2).setValue(formattedDate);
+
+  // Highlight the used row - FIXED
+  var highlightColor = getRandomColor();
+  sheet.getRange(originalRowIndex, 1, 1, 2).setBackground(highlightColor);
+}
+
+// Function to generate random colors for each sentence
+function generateRandomColors(numberOfColors) {
+  var colors = [];
+  for (var i = 0; i < numberOfColors; i++) {
+    colors.push(getRandomColor());
+  }
+  return colors;
+}
+
+// Function to get a random hex color
+function getRandomColor() {
+  var letters = '0123456789ABCDEF';
+  var color = '#';
+  for (var i = 0; i < 6; i++) {
+    color += letters[Math.floor(Math.random() * 16)];
+  }
+  return color;
+}
+
+// Refresh function to run on the 1st of every month
+function REFRESH() {
+  var fileId = 'YOUR_SHEET_ID_HERE'; // Replace with your Google Sheets ID
+  var spreadsheet = SpreadsheetApp.openById(fileId);
+  var sheets = spreadsheet.getSheets();
+
+  for (var i = 0; i < sheets.length; i++) {
+    var sheet = sheets[i];
+    var lastRow = sheet.getLastRow();
+    if (lastRow > 0) {
+      sheet.getRange('B1:B' + lastRow).clearContent(); // Clear only dates in column B
+      sheet.getRange('A1:B' + lastRow).setBackground(null); // Clear highlighting
+    }
+  }
+  Logger.log('Quotes refreshed and formatting cleared.');
+}
+
+// Function to set up daily trigger
+function createDailyTrigger() {
+  ScriptApp.newTrigger('QUOTES_EMAIL')
+   .timeBased()
+   .atHour(7)
+   .everyDays(1)
+   .create();
+}
+
+// Function to set up monthly trigger for refreshing quotes
+function createMonthlyTrigger() {
+  ScriptApp.newTrigger('REFRESH')
+   .timeBased()
+   .onMonthDay(1)
+   .atHour(0)
+   .create();
+}
+
+// Initialize triggers
+function setupTriggers() {
+  createDailyTrigger();
+  createMonthlyTrigger();
+}
